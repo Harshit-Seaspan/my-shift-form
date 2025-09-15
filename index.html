@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Public Shift Form</title>
+  <style>
+    /* ... same styles as before ... */
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f5f7fa;
+      margin: 0;
+      padding: 2rem;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+    }
+
+    .container {
+      background: white;
+      padding: 2.5rem 3rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+      max-width: 420px;
+      width: 100%;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 1.8rem;
+      color: #2c3e50;
+      font-weight: 700;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    label {
+      font-weight: 600;
+      color: #34495e;
+      margin-bottom: 0.4rem;
+      display: inline-block;
+    }
+
+    input[type="date"],
+    input[type="text"],
+    select {
+      padding: 0.65rem 1rem;
+      font-size: 1rem;
+      border: 1.8px solid #ccd6f6;
+      border-radius: 8px;
+      background-color: #fefefe;
+      transition: border-color 0.3s ease;
+      width: 100%;
+    }
+
+    input[type="date"]:focus,
+    input[type="text"]:focus,
+    select:focus {
+      border-color: #3b82f6;
+      outline: none;
+      box-shadow: 0 0 6px #3b82f6aa;
+      background-color: #fff;
+    }
+
+    button {
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      padding: 0.75rem 0;
+      font-size: 1.1rem;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 700;
+      transition: background-color 0.3s ease;
+      box-shadow: 0 5px 10px rgba(59, 130, 246, 0.4);
+    }
+
+    button:hover {
+      background-color: #2563eb;
+      box-shadow: 0 8px 20px rgba(37, 99, 235, 0.6);
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 1rem;
+      }
+
+      .container {
+        padding: 1.5rem 1.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Shift Entry Form</h2>
+
+    <form id="shiftForm">
+      <!-- Date Field (editable, defaults to today) -->
+      <label for="date">Date:</label>
+      <input type="date" id="date" name="date" required />
+
+      <!-- Shift Dropdown -->
+      <label for="shift">Shift:</label>
+      <select id="shift" name="shift" required>
+        <option value="" disabled selected>-- Select Shift --</option>
+        <option value="Daytime Shift">Daytime Shift</option>
+        <option value="Overtime (Weekday)">Overtime (Weekday)</option>
+      </select>
+
+      <!-- User Name Dropdown (populated dynamically) -->
+      <label for="userName">User Name:</label>
+      <select id="userName" name="userName" required>
+        <option value="" disabled selected>Loading users...</option>
+      </select>
+
+      <!-- Spool ID -->
+      <label for="spoolId">Spool ID:</label>
+      <input type="text" id="spoolId" name="spoolId" required placeholder="Enter Spool ID" />
+
+      <!-- Submit Button -->
+      <button type="submit">Submit</button>
+    </form>
+  </div>
+
+  <script>
+    // Set today's date as default value for date input
+    const dateInput = document.getElementById('date');
+    dateInput.value = new Date().toISOString().split('T')[0];
+
+    // SharePoint site & list info
+    const sharepointSiteUrl = "https://seaspan.sharepoint.com/sites/JSS2";
+    const listName = "WelderSetUp";
+
+    async function fetchUsers() {
+      const userSelect = document.getElementById('userName');
+      userSelect.innerHTML = '<option value="" disabled selected>Loading users...</option>';
+
+      // REST API endpoint to get items from the list, selecting WelderName column
+      const endpoint = `${sharepointSiteUrl}/_api/web/lists/getbytitle('${listName}')/items?$select=WelderName`;
+
+      try {
+        const response = await fetch(endpoint, {
+          headers: {
+            "Accept": "application/json;odata=verbose"
+          },
+          credentials: "include"  // send cookies for authentication (works when hosted inside SharePoint)
+        });
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+        const data = await response.json();
+
+        // Clear existing options
+        userSelect.innerHTML = '<option value="" disabled selected>-- Select User --</option>';
+
+        // Extract unique WelderNames to avoid duplicates
+        const welderNamesSet = new Set();
+        data.d.results.forEach(item => {
+          if(item.WelderName && !welderNamesSet.has(item.WelderName)) {
+            welderNamesSet.add(item.WelderName);
+          }
+        });
+
+        if(welderNamesSet.size === 0) {
+          userSelect.innerHTML = '<option value="" disabled selected>No users found</option>';
+          return;
+        }
+
+        welderNamesSet.forEach(name => {
+          const option = document.createElement('option');
+          option.value = name;
+          option.textContent = name;
+          userSelect.appendChild(option);
+        });
+      } catch (error) {
+        console.error("Failed to fetch users from SharePoint:", error);
+        userSelect.innerHTML = '<option value="" disabled selected>Failed to load users</option>';
+      }
+    }
+
+    // Load users on page load
+    fetchUsers();
+
+    // Handle form submission
+    document.getElementById('shiftForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+
+      const data = {
+        date: dateInput.value,
+        shift: document.getElementById('shift').value,
+        userName: document.getElementById('userName').value,
+        spoolId: document.getElementById('spoolId').value
+      };
+
+      try {
+        const response = await fetch('YOUR_POWER_AUTOMATE_WEBHOOK_URL', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+          alert('Form submitted successfully!');
+          this.reset();
+          dateInput.value = new Date().toISOString().split('T')[0];
+        } else {
+          alert('Submission failed. Please try again.');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('An error occurred while submitting the form.');
+      }
+    });
+  </script>
+</body>
+</html>
